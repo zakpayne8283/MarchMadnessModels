@@ -2,8 +2,8 @@ from pathlib import Path
 from scrapy.selector import Selector
 
 import csv
+import os
 import scrapy
-
 
 class BracketsSpider(scrapy.Spider):
     name = "brackets"
@@ -21,7 +21,16 @@ class BracketsSpider(scrapy.Spider):
 
     def parse(self, response):
         # The data going to the CSV
-        data_to_write = []
+        data_to_write = [[
+            'bracket_type',
+            'games_in_round',
+            'winning_team_seed',
+            'winning_team_name',
+            'winning_team_score',
+            'losing_team_seed',
+            'losing_team_name', 
+            'losing_team_score'
+            ]]
 
         # File name indicator
         file_name = response.url.split("/")[-1][:4]
@@ -79,8 +88,14 @@ class BracketsSpider(scrapy.Spider):
                     # Save the data for write
                     data_to_write.append([bracket_type, games_in_round, winning_team_seed, winning_team_name, winning_team_score, losing_team_seed, losing_team_name, losing_team_score])
 
+
+        folder_path = '../data/raw/brackets/'
+
+        # Make the folder if it's needed
+        os.makedirs(folder_path, exist_ok=True)
+
         # Open the file in write mode ('w') with newline=''
-        with open(f'../data/raw/brackets-{file_name}.csv', 'w', newline='') as csvfile:
+        with open(os.path.join(folder_path, f'brackets-{file_name}.csv'), 'w', newline='') as csvfile:
             # Create a writer object
             writer = csv.writer(csvfile)
 
