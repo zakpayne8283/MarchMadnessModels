@@ -6,3 +6,5 @@ pandas
 # Jupyter Stuff
 jupyterlab
 ipykernel
+# sklearn
+scikit-learn

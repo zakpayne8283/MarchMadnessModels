@@ -1,3 +1,10 @@
+"""
+
+Most of this should be moved to the web scraper. Really it's just doing a first pass clean of the data I'm scrapping, there's 
+no reason the web crawler can't do that. Specific data prep can be done in each model's helpers
+
+"""
+
 import os
 import pandas as pd
 
