@@ -1,3 +1,5 @@
+NOTE - manual bracket means me manually adding results, not picking
+
 ### Setup
 ```
 pip install -r requirements.txt

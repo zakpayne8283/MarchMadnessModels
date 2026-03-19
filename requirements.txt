@@ -8,3 +8,5 @@ jupyterlab
 ipykernel
 # sklearn
 scikit-learn
+# Model use in notebook (v1)
+joblib

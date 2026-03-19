@@ -12,8 +12,8 @@ raw_directory = './data/raw/'
 processed_directory = './data/processed/'
 
 def main():
-    prepare_directory()
-    process_brackets()
+    # prepare_directory()
+    # process_brackets()
     process_teams()
 
 def prepare_directory():
@@ -60,6 +60,9 @@ def process_teams():
 
     # Go through each year
     for year in os.listdir(teams_raw):
+        if year != '2026':
+            continue
+
         # Specify the year's directory
         year_dir = os.path.join(teams_raw, year)
 
@@ -79,7 +82,7 @@ def process_teams():
             df_info = pd.concat([df_info, team_info_df])
 
     df_info = __clean_team_info(df_info)
-    df_info.to_csv(os.path.join(processed_directory, 'team-info.csv'), index=False)
+    df_info.to_csv(os.path.join(processed_directory, 'team-info.csv'), mode='a', index=False)
 
     # Implement this later
     # df_stats.loc[df_stats.index == 0, 'Type'] = "Team Stat"

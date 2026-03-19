@@ -10,18 +10,19 @@ import scrapy
 class BracketsSpider(scrapy.Spider):
     name = "brackets"
     custom_settings = {
-        'DOWNLOAD_DELAY': 10
+        'DOWNLOAD_DELAY': 2
     }
 
     root_url = 'https://www.sports-reference.com'
 
     async def start(self):
         urls = [
-            "https://www.sports-reference.com/cbb/postseason/men/2025-ncaa.html",
-            "https://www.sports-reference.com/cbb/postseason/men/2024-ncaa.html",
-            "https://www.sports-reference.com/cbb/postseason/men/2023-ncaa.html",
-            "https://www.sports-reference.com/cbb/postseason/men/2022-ncaa.html",
-            "https://www.sports-reference.com/cbb/postseason/men/2021-ncaa.html",
+            "https://www.sports-reference.com/cbb/postseason/men/2026-ncaa.html"
+            # "https://www.sports-reference.com/cbb/postseason/men/2025-ncaa.html",
+            # "https://www.sports-reference.com/cbb/postseason/men/2024-ncaa.html",
+            # "https://www.sports-reference.com/cbb/postseason/men/2023-ncaa.html",
+            # "https://www.sports-reference.com/cbb/postseason/men/2022-ncaa.html",
+            # "https://www.sports-reference.com/cbb/postseason/men/2021-ncaa.html",
         ]
         for url in urls:
             yield scrapy.Request(url=url, callback=self.parse_brackets)
@@ -82,24 +83,29 @@ class BracketsSpider(scrapy.Spider):
                     # Extract the game info from the teams
                     for team in teams:
                         
-                        # Pull the team URL out to scrape later
-                        team_link = team.css('a:nth-child(2)::attr(href)').get()
+                        try:
 
-                        # Winning team
-                        if team.css('::attr(class)').get() == 'winner':
-                            winning_team_seed = team.css('span::text').get()
-                            winning_team_score = team.css('a:nth-child(3)::text').get()
-                            winning_team_slug = team_link.split('/')[3]
-                        # Losing team
-                        else:
-                            losing_team_seed = team.css('span::text').get()
-                            losing_team_score = team.css('a:nth-child(3)::text').get()
-                            losing_team_slug = team_link.split('/')[3]
+                            # Pull the team URL out to scrape later
+                            team_link = team.css('a:nth-child(2)::attr(href)').get()
 
-                        if team_link:
-                            yield response.follow(team_link, callback=self.parse_teams)
-                        else:
-                            raise Exception()
+                            # Winning team
+                            if team.css('::attr(class)').get() == 'winner':
+                                winning_team_seed = team.css('span::text').get()
+                                winning_team_score = team.css('a:nth-child(3)::text').get()
+                                winning_team_slug = team_link.split('/')[3]
+                            # Losing team
+                            else:
+                                losing_team_seed = team.css('span::text').get()
+                                losing_team_score = team.css('a:nth-child(3)::text').get()
+                                losing_team_slug = team_link.split('/')[3]
+
+                            if team_link:
+                                yield response.follow(team_link, callback=self.parse_teams)
+                            else:
+                                raise Exception()
+                            
+                        except:
+                            print("Error parsing team(s)")
 
                     # Save the data for write
                     data_to_write.append([
