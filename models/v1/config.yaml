@@ -1,0 +1,23 @@
+model:
+  type: logistic_regression
+  hyperparameters:
+    C: 1.0
+    max_iter: 1000
+    random_state: 42
+
+training:
+  test_size: 0.2
+  scale_features: true
+
+features:
+  # will result as diff_{feature}
+  seed: true
+  sos: true
+  srs: true
+  ortg: true
+  drtg: true
+
+metadata:
+  version: "v1"
+  description: "Baseline logistic regression model"
+  created: "2026-03-18"

@@ -1,4 +1,4 @@
-import csv
+import numpy as np
 import os
 import pandas as pd
 import scrapy
@@ -25,25 +25,23 @@ class BracketsSpider(scrapy.Spider):
         'games_in_round',
         'winning_team_seed',
         'winning_team_name',
-        'winning_team_score',
         'losing_team_seed',
-        'losing_team_name', 
-        'losing_team_score'
+        'losing_team_name'
     ])
     df_teamstats = pd.DataFrame(columns=[
         'team',
-        'year'
-        'SOS',
-        'SRS',
-        'Records',
-        'ORtg',
-        'DRtg'
+        'year',
+        'sos',
+        'srs',
+        'records',
+        'ortg',
+        'drtg'
     ])
 
     # scrapy method
     async def start(self):
         # Tournament years to scrape
-        years = [2021]#, 2022, 2023, 2024, 2025]
+        years = [2021, 2022, 2023, 2024, 2025]
 
         for year in years:
             url = f'{self.ROOT_URL}/cbb/postseason/men/{year}-ncaa.html'
@@ -52,8 +50,8 @@ class BracketsSpider(scrapy.Spider):
     # scrapy method
     def close(self, reason):
         # temp cache the dfs so I don't hit 429s or take forever for testing
-        self.df_bracket.to_csv('temp_bracket.csv')
-        self.df_teamstats.to_csv('temp_teamstats.csv')
+        # self.df_bracket = pd.read_csv('temp_bracket.csv')
+        # self.df_teamstats = pd.read_csv('temp_teamstats.csv')
 
         self.__create_csvs()
 
@@ -94,10 +92,8 @@ class BracketsSpider(scrapy.Spider):
 
                     # Outputs
                     winning_team_seed = ""
-                    winning_team_score = ""
                     winning_team_slug = ""
                     losing_team_seed = ""
-                    losing_team_score = ""
                     losing_team_slug = ""
 
                     # Extract the game info from the teams
@@ -111,12 +107,10 @@ class BracketsSpider(scrapy.Spider):
                             # Winning team
                             if team.css('::attr(class)').get() == 'winner':
                                 winning_team_seed = team.css('span::text').get()
-                                winning_team_score = team.css('a:nth-child(3)::text').get()
                                 winning_team_slug = team_link.split('/')[3]
                             # Losing team
                             else:
                                 losing_team_seed = team.css('span::text').get()
-                                losing_team_score = team.css('a:nth-child(3)::text').get()
                                 losing_team_slug = team_link.split('/')[3]
 
                             if team_link:
@@ -133,11 +127,9 @@ class BracketsSpider(scrapy.Spider):
                         'bracket_type': bracket_type,
                         'games_in_round': games_in_round,
                         'winning_team_seed': winning_team_seed,
-                        'winning_team_slug': winning_team_slug,
-                        'winning_team_score': winning_team_score,
+                        'winning_team_name': winning_team_slug,
                         'losing_team_seed': losing_team_seed,
-                        'losing_team_slug': losing_team_slug,
-                        'losing_team_score': losing_team_score
+                        'losing_team_name': losing_team_slug
                     }
 
                     self.df_bracket.loc[len(self.df_bracket)] = new_row
@@ -166,42 +158,45 @@ class BracketsSpider(scrapy.Spider):
         self.df_teamstats.loc[len(self.df_teamstats)] = new_row
 
     def __create_csvs(self):
-        print("== Raw Data ==")
-        print(self.df_bracket.head())
-        print('='*20)
-        print(self.df_teamstats.head())
-
-        print("== Cleaned Data ==")
+        # Clean the data
         self.__clean_brackets_df()
         self.__clean_teamstats_df()
-        print(self.df_bracket.head())
-        print('='*20)
-        print(self.df_teamstats.head())
+        # Save as CSVs
+        self.df_bracket.to_csv(os.path.join(self.RAW_DATA_DIR, 'brackets.csv'), index=False)
+        self.df_teamstats.to_csv(os.path.join(self.RAW_DATA_DIR, 'team-stats.csv'), index=False)
 
     def __clean_brackets_df(self):
-        # Simplify which round it is
-        self.df_bracket['round_of'] = self.df_bracket.apply(self.__determine_round, axis=1)
-
         # Drop unneeded columns
         self.df_bracket = self.df_bracket.drop(columns=['bracket_type', 'games_in_round'])
+
+        # Random state for team a/b for training
+        rng = np.random.default_rng(42)
+        flip = rng.integers(0, 2, size=len(self.df_bracket)).astype(bool)
+
+        # Add columns to output for Team A/B 
+        self.df_bracket['team_a'] = np.where(flip, self.df_bracket['winning_team_name'], self.df_bracket['losing_team_name'])
+        self.df_bracket['team_a_seed'] = np.where(flip, self.df_bracket['winning_team_seed'], self.df_bracket['losing_team_seed'])
+        self.df_bracket['team_b'] = np.where(flip, self.df_bracket['losing_team_name'], self.df_bracket['winning_team_name'])
+        self.df_bracket['team_b_seed'] = np.where(flip, self.df_bracket['losing_team_seed'], self.df_bracket['winning_team_seed'])
+        self.df_bracket['team_a_won'] = flip.astype(int)
+
+        self.df_bracket = self.df_bracket.drop(columns=[
+            'winning_team_name',
+            'winning_team_seed',
+            'losing_team_name',
+            'losing_team_seed',
+            ])
+        
+        print(self.df_bracket)
     
     def __clean_teamstats_df(self):
         # TODO: Fix the crawler for the Records column
-        self.df_teamstats = self.df_teamstats.drop(columns=['Records'])
+        self.df_teamstats = self.df_teamstats.drop(columns=['records'])
 
         # Extract SOS, SRS, ORtg, and DRtg
-        self.df_teamstats['SOS']  = self.df_teamstats['SOS'].str.strip().str.extract(r'^([^ (]*)', expand=False)
-        self.df_teamstats['SRS']  = self.df_teamstats['SRS'].str.strip().str.extract(r'^([^ (]*)', expand=False)
-        self.df_teamstats['ORtg'] = self.df_teamstats['ORtg'].str.strip().str.extract(r'(\d+\.\d+)', expand=False)
-        self.df_teamstats['DRtg'] = self.df_teamstats['DRtg'].str.strip().str.extract(r'(\d+\.\d+)', expand=False)
+        self.df_teamstats['sos']  = self.df_teamstats['sos'].astype(str).str.strip().str.extract(r'^([^ (]*)', expand=False)
+        self.df_teamstats['srs']  = self.df_teamstats['srs'].astype(str).str.strip().str.extract(r'^([^ (]*)', expand=False)
+        self.df_teamstats['ortg'] = self.df_teamstats['ortg'].astype(str).str.strip().str.extract(r'(\d+\.\d+)', expand=False)
+        self.df_teamstats['drtg'] = self.df_teamstats['drtg'].astype(str).str.strip().str.extract(r'(\d+\.\d+)', expand=False)
 
-    def __determine_round(row):
-        """
-        Determines which round of the tournament for that game based on which bracket type and number of games in the round
-        """
-        # I dislike super python-y statements like this
-        multiplier = 4 if row['bracket_type'] == 'team16' else 1
-        
-        # multiplier is 4 in the regional brackets because there are 4 of them
-        # theres only 1 final 4 bracket
-        return row['games_in_round'] * 2 * multiplier
+        self.df_teamstats = self.df_teamstats.reset_index()
