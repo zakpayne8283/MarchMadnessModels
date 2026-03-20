@@ -1,47 +1,67 @@
-from io import StringIO
-from pathlib import Path
-from scrapy.selector import Selector
-
 import csv
 import os
 import pandas as pd
 import scrapy
 
 class BracketsSpider(scrapy.Spider):
+    # scrapy settings
     name = "brackets"
     custom_settings = {
-        'DOWNLOAD_DELAY': 2
+        'DOWNLOAD_DELAY': 5
     }
 
-    root_url = 'https://www.sports-reference.com'
+    # my settings
+    ROOT_URL = 'https://www.sports-reference.com'
+    RAW_DATA_DIR = '../data/raw/'
+    FILE_NAMES = {
+        'roster': 'roster.csv',
+        'team-info': 'team-info.csv'
+    }
 
+    # data out
+    df_bracket = pd.DataFrame(columns=[
+        'year',
+        'bracket_type',
+        'games_in_round',
+        'winning_team_seed',
+        'winning_team_name',
+        'winning_team_score',
+        'losing_team_seed',
+        'losing_team_name', 
+        'losing_team_score'
+    ])
+    df_teamstats = pd.DataFrame(columns=[
+        'team',
+        'year'
+        'SOS',
+        'SRS',
+        'Records',
+        'ORtg',
+        'DRtg'
+    ])
+
+    # scrapy method
     async def start(self):
-        urls = [
-            "https://www.sports-reference.com/cbb/postseason/men/2026-ncaa.html"
-            # "https://www.sports-reference.com/cbb/postseason/men/2025-ncaa.html",
-            # "https://www.sports-reference.com/cbb/postseason/men/2024-ncaa.html",
-            # "https://www.sports-reference.com/cbb/postseason/men/2023-ncaa.html",
-            # "https://www.sports-reference.com/cbb/postseason/men/2022-ncaa.html",
-            # "https://www.sports-reference.com/cbb/postseason/men/2021-ncaa.html",
-        ]
-        for url in urls:
+        # Tournament years to scrape
+        years = [2021]#, 2022, 2023, 2024, 2025]
+
+        for year in years:
+            url = f'{self.ROOT_URL}/cbb/postseason/men/{year}-ncaa.html'
             yield scrapy.Request(url=url, callback=self.parse_brackets)
 
+    # scrapy method
+    def close(self, reason):
+        # temp cache the dfs so I don't hit 429s or take forever for testing
+        self.df_bracket.to_csv('temp_bracket.csv')
+        self.df_teamstats.to_csv('temp_teamstats.csv')
+
+        self.__create_csvs()
+
     def parse_brackets(self, response):
-        # The data going to the CSV
-        data_to_write = [[
-            'bracket_type',
-            'games_in_round',
-            'winning_team_seed',
-            'winning_team_name',
-            'winning_team_score',
-            'losing_team_seed',
-            'losing_team_name', 
-            'losing_team_score'
-            ]]
+        # TODO: Also handle scraping the latest year, which will have incomplete brackets
 
         # File name indicator
-        file_name = response.url.split("/")[-1][:4]
+        year = response.url.split("/")[-1][:4]
 
         # Page has 5 `div#bracket`s for UI nav
         regional_brackets = response.css('div#bracket')
@@ -107,39 +127,24 @@ class BracketsSpider(scrapy.Spider):
                         except:
                             print("Error parsing team(s)")
 
-                    # Save the data for write
-                    data_to_write.append([
-                        bracket_type,
-                        games_in_round,
-                        winning_team_seed,
-                        winning_team_slug,
-                        winning_team_score,
-                        losing_team_seed,
-                        losing_team_slug,
-                        losing_team_score
-                        ])
+                    # Append the data to the df
+                    new_row = {
+                        'year': year,
+                        'bracket_type': bracket_type,
+                        'games_in_round': games_in_round,
+                        'winning_team_seed': winning_team_seed,
+                        'winning_team_slug': winning_team_slug,
+                        'winning_team_score': winning_team_score,
+                        'losing_team_seed': losing_team_seed,
+                        'losing_team_slug': losing_team_slug,
+                        'losing_team_score': losing_team_score
+                    }
 
-        folder_path = '../data/raw/brackets/'
-
-        # Make the folder if it's needed
-        os.makedirs(folder_path, exist_ok=True)
-
-        # Open the file in write mode ('w') with newline=''
-        with open(os.path.join(folder_path, f'brackets-{file_name}.csv'), 'w', newline='') as csvfile:
-            # Create a writer object
-            writer = csv.writer(csvfile)
-
-            # Loop through your data and write each row one by one
-            for row in data_to_write:
-                writer.writerow(row)
-
+                    self.df_bracket.loc[len(self.df_bracket)] = new_row
 
     def parse_teams(self, response):
         team_slug = response.url.split('/')[-3]
         team_year = response.url.split('/')[-1][:4]
-
-        # Create the file path for this team's data
-        folder_path = f'../data/raw/teams/{team_year}/{team_slug}'
 
         # Extract basic team info from the summary of the page
         strength_of_schedule = response.xpath('//a[@href="/cbb/about/glossary.html#sos"]/../../text()').get()
@@ -148,33 +153,55 @@ class BracketsSpider(scrapy.Spider):
         o_rtg = response.xpath('//strong[text()="ORtg:"]/../text()').getall()
         d_rtg = response.xpath('//strong[text()="DRtg:"]/../text()').getall()
 
-        # Make the folder if it's needed
-        os.makedirs(folder_path, exist_ok=True)
+        new_row = {
+            'team': team_slug,
+            'year': team_year,
+            'sos': strength_of_schedule,
+            'srs': srs,
+            'records': team_records,
+            'ortg': o_rtg,
+            'drtg': d_rtg
+        }
+
+        self.df_teamstats.loc[len(self.df_teamstats)] = new_row
+
+    def __create_csvs(self):
+        print("== Raw Data ==")
+        print(self.df_bracket.head())
+        print('='*20)
+        print(self.df_teamstats.head())
+
+        print("== Cleaned Data ==")
+        self.__clean_brackets_df()
+        self.__clean_teamstats_df()
+        print(self.df_bracket.head())
+        print('='*20)
+        print(self.df_teamstats.head())
+
+    def __clean_brackets_df(self):
+        # Simplify which round it is
+        self.df_bracket['round_of'] = self.df_bracket.apply(self.__determine_round, axis=1)
+
+        # Drop unneeded columns
+        self.df_bracket = self.df_bracket.drop(columns=['bracket_type', 'games_in_round'])
+    
+    def __clean_teamstats_df(self):
+        # TODO: Fix the crawler for the Records column
+        self.df_teamstats = self.df_teamstats.drop(columns=['Records'])
+
+        # Extract SOS, SRS, ORtg, and DRtg
+        self.df_teamstats['SOS']  = self.df_teamstats['SOS'].str.strip().str.extract(r'^([^ (]*)', expand=False)
+        self.df_teamstats['SRS']  = self.df_teamstats['SRS'].str.strip().str.extract(r'^([^ (]*)', expand=False)
+        self.df_teamstats['ORtg'] = self.df_teamstats['ORtg'].str.strip().str.extract(r'(\d+\.\d+)', expand=False)
+        self.df_teamstats['DRtg'] = self.df_teamstats['DRtg'].str.strip().str.extract(r'(\d+\.\d+)', expand=False)
+
+    def __determine_round(row):
+        """
+        Determines which round of the tournament for that game based on which bracket type and number of games in the round
+        """
+        # I dislike super python-y statements like this
+        multiplier = 4 if row['bracket_type'] == 'team16' else 1
         
-        # Create the team info CSV TODO: Maybe rework this or something? Seems a lot of have extra files for one line
-        with open(os.path.join(folder_path, f'team-info.csv'), 'w', newline='') as csvfile:
-            # Create a writer object
-            writer = csv.writer(csvfile)
-
-            writer.writerow(['SOS', 'SRS', 'Records', 'ORtg', 'DRtg'])
-            writer.writerow([
-                strength_of_schedule,
-                srs,
-                team_records,
-                o_rtg,
-                d_rtg
-            ])
-
-        # Pull the roster
-        roster = response.css('table#roster').get()
-        df = pd.read_html(StringIO(roster))[0]
-        df.to_csv(os.path.join(folder_path, 'roster.csv'), index=False)
-
-        # Pull `season-total_per_game`
-        season_total_per_game = response.css('table#season-total_per_game').get()
-        df = pd.read_html(StringIO(season_total_per_game))[0]
-        df.to_csv(os.path.join(folder_path, 'season_total_per_game.csv'), index=False)
-
-        season_total_totals = response.css('table#season-total_totals').get()
-        df = pd.read_html(StringIO(season_total_totals))[0]
-        df.to_csv(os.path.join(folder_path, 'season_total_totals.csv'), index=False)
+        # multiplier is 4 in the regional brackets because there are 4 of them
+        # theres only 1 final 4 bracket
+        return row['games_in_round'] * 2 * multiplier
