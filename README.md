@@ -11,9 +11,9 @@ Scrape the raw data with
 cd data_scraper
 scrapy crawl brackets
 ```
-Clean the data
+Run the model
 ```
-python data_clean.py
+python models/v1/model.py
 ```
 
 ### About
